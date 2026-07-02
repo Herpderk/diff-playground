@@ -18,11 +18,11 @@ import numpy as np
 
 ENV_NAMES = ('HopperHop',)
 ROLLOUT_MODES = (
-    (False, 'hard'),
-    (True, 'hard'),
-    (True, 'c2'),
+    None,
+    'hard',
+    'c2',
 )
-SOFT_MODES = ('hard', 'c2')
+SOFTJAX_MODES = ('hard', 'c2')
 NUM_STEPS = 2
 
 
@@ -39,12 +39,10 @@ def _require_soft_collision_support() -> None:
       </mujoco>
       """)
   mx = mjx.put_model(model)
-  if not hasattr(mx.opt, 'col_soft_enable') or not hasattr(
-      mx.opt, 'softjax_mode'
-  ):
+  if not hasattr(mx.opt, 'softjax_mode'):
     raise AssertionError(
         'Vendored diff-mjx is not active. Expected mjx option fields '
-        '`col_soft_enable` and `softjax_mode`.'
+        '`softjax_mode`.'
     )
 
 
@@ -52,18 +50,15 @@ def _clone_env(env_name: str):
   return registry.load(env_name, config_overrides={'impl': 'jax'})
 
 
-def _configured_model(env, col_soft_enable: bool, softjax_mode: str):
+def _configured_model(env, softjax_mode: str | None):
   return env.mjx_model.replace(
-      opt=env.mjx_model.opt.replace(
-          col_soft_enable=col_soft_enable,
-          softjax_mode=softjax_mode,
-      )
+      opt=env.mjx_model.opt.replace(softjax_mode=softjax_mode)
   )
 
 
-def _configured_env(env_name: str, col_soft_enable: bool, softjax_mode: str):
+def _configured_env(env_name: str, softjax_mode: str | None):
   env = _clone_env(env_name)
-  env._mjx_model = _configured_model(env, col_soft_enable, softjax_mode)
+  env._mjx_model = _configured_model(env, softjax_mode)
   return env
 
 
@@ -96,8 +91,8 @@ def _rollout(env, seed: int = 0):
   return final_state, rewards
 
 
-def _gradient_metrics(env_name: str, col_soft_enable: bool, softjax_mode: str):
-  env = _configured_env(env_name, col_soft_enable, softjax_mode)
+def _gradient_metrics(env_name: str, softjax_mode: str | None):
+  env = _configured_env(env_name, softjax_mode)
   states = _rollout_states(env)
   grad_fn = jax.jit(
       jax.grad(lambda qpos, data: _contact_loss(env, data, qpos), argnums=0)
@@ -132,7 +127,6 @@ def _gradient_metrics(env_name: str, col_soft_enable: bool, softjax_mode: str):
       'finite_by_step': finite_by_step,
       'zero_by_step': zero_by_step,
       'mode': softjax_mode,
-      'col_soft_enable': col_soft_enable,
   }
 
 
@@ -145,21 +139,20 @@ class CollisionEnvTest(parameterized.TestCase):
   @parameterized.named_parameters(
       {
           'testcase_name': (
-              f'test_{env_name}_{softjax_mode}_'
-              f'{"soft" if col_soft_enable else "hard"}'
+              f'test_{env_name}_'
+              f'{"default" if softjax_mode is None else softjax_mode}'
           ),
           'env_name': env_name,
-          'col_soft_enable': col_soft_enable,
           'softjax_mode': softjax_mode,
       }
       for env_name in ENV_NAMES
-      for col_soft_enable, softjax_mode in ROLLOUT_MODES
+      for softjax_mode in ROLLOUT_MODES
   )
   def test_collision_rollouts_are_finite(
-      self, env_name: str, col_soft_enable: bool, softjax_mode: str
+      self, env_name: str, softjax_mode: str | None
   ) -> None:
     _require_soft_collision_support()
-    env = _configured_env(env_name, col_soft_enable, softjax_mode)
+    env = _configured_env(env_name, softjax_mode)
     state, rewards = _rollout(env)
 
     self.assertTrue(np.isfinite(np.asarray(state.data.qpos)).all())
@@ -173,13 +166,13 @@ class CollisionEnvTest(parameterized.TestCase):
           'softjax_mode': softjax_mode,
       }
       for env_name in ENV_NAMES
-      for softjax_mode in SOFT_MODES
+      for softjax_mode in SOFTJAX_MODES
   )
   def test_soft_collision_gradients_are_finite(
       self, env_name: str, softjax_mode: str
   ) -> None:
     _require_soft_collision_support()
-    metrics = _gradient_metrics(env_name, True, softjax_mode)
+    metrics = _gradient_metrics(env_name, softjax_mode)
 
     self.assertTrue(
         metrics['finite'],
@@ -206,10 +199,10 @@ class CollisionEnvTest(parameterized.TestCase):
       self, env_name: str
   ) -> None:
     _require_soft_collision_support()
-    hard_metrics = _gradient_metrics(env_name, False, 'hard')
+    hard_metrics = _gradient_metrics(env_name, None)
     soft_metrics = [
-        _gradient_metrics(env_name, True, softjax_mode)
-        for softjax_mode in SOFT_MODES
+        _gradient_metrics(env_name, softjax_mode)
+        for softjax_mode in SOFTJAX_MODES
     ]
 
     for metrics in soft_metrics:
