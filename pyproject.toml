@@ -34,6 +34,7 @@ dependencies = [
     "warp-lang>=1.14",
     "orbax-checkpoint>=0.11.22",
     "tqdm",
+    "pytest>=9.1.1",
 ]
 keywords = ["mjx", "mujoco", "sim2real", "reinforcement learning"]
 
