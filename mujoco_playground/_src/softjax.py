@@ -19,7 +19,7 @@ import functools
 import softjax as _softjax
 
 
-SOFTNESS = 0.01
+SOFTNESS = 5e-3
 
 
 def _with_softness(fn, softness_position):
@@ -64,4 +64,3 @@ logical_not = _softjax.logical_not
 logical_or = _softjax.logical_or
 norm = _softjax.norm
 where = _softjax.where
-

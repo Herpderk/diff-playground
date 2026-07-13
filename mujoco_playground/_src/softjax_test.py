@@ -24,23 +24,23 @@ from mujoco_playground._src import softjax as sj
 class SoftjaxTest(absltest.TestCase):
 
   def test_softness(self):
-    self.assertEqual(sj.SOFTNESS, 0.01)
+    self.assertEqual(sj.SOFTNESS, 5e-3)
 
   def test_clip_at_lower_bound(self):
     np.testing.assert_allclose(
-        sj.clip(jp.array(0.0), 0.0, 10000.0), 0.00693147, rtol=1e-5
+        sj.clip(jp.array(0.0), 0.0, 10000.0), 0.00346574, rtol=1e-5
     )
     np.testing.assert_allclose(
         sj.clip(jp.array(0.0), 0.0, 10000.0, softness=0.1),
-        0.00693147,
+        0.00346574,
         rtol=1e-5,
     )
 
   def test_abs(self):
-    np.testing.assert_allclose(sj.abs(0.01), 0.00462117, rtol=1e-5)
+    np.testing.assert_allclose(sj.abs(0.01), 0.00761594, rtol=1e-5)
 
   def test_comparisons(self):
-    expected = 0.7310586
+    expected = 0.880797
     np.testing.assert_allclose(sj.greater(0.01, 0.0), expected, rtol=1e-5)
     np.testing.assert_allclose(
         sj.greater_equal(0.01, 0.0), expected, rtol=1e-5
@@ -53,10 +53,10 @@ class SoftjaxTest(absltest.TestCase):
   def test_reductions(self):
     values = jp.array([0.0, 0.01])
     np.testing.assert_allclose(sj.max(values), 0.01, rtol=1e-5)
-    np.testing.assert_allclose(sj.min(values), 1.83496e-22, rtol=1e-5)
+    np.testing.assert_allclose(sj.min(values), 0.0, rtol=1e-5)
 
   def test_relu(self):
-    np.testing.assert_allclose(sj.relu(0.0), 0.00693147, rtol=1e-5)
+    np.testing.assert_allclose(sj.relu(0.0), 0.00346574, rtol=1e-5)
 
   def test_modes_are_forwarded(self):
     self.assertEqual(sj.clip(0.0, 0.0, 10000.0, mode="hard"), 0.0)
