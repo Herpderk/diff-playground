@@ -22,9 +22,8 @@ from ml_collections import config_dict
 from mujoco import mjx
 import mujoco  # pylint: disable=unused-import
 from mujoco.mjx._src import math
-import softjax as sj
-
 from mujoco_playground._src import mjx_env
+from mujoco_playground._src import softjax as sj
 from mujoco_playground._src.manipulation.franka_emika_panda import panda
 from mujoco_playground._src.mjx_env import State  # pylint: disable=g-importing-member
 

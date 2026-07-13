@@ -20,9 +20,8 @@ import jax
 from jax import numpy as jp
 from ml_collections import config_dict
 from mujoco import mjx
-import softjax as sj
-
 from mujoco_playground._src import mjx_env
+from mujoco_playground._src import softjax as sj
 from mujoco_playground._src.manipulation.aloha import aloha_constants as consts
 from mujoco_playground._src.manipulation.aloha import base as aloha_base
 

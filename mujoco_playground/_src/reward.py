@@ -17,7 +17,8 @@
 import warnings
 
 import jax.numpy as jp
-import softjax as sj
+
+from mujoco_playground._src import softjax as sj
 
 # The value returned by tolerance() at `margin` distance from `bounds` interval.
 _DEFAULT_VALUE_AT_MARGIN = 0.1

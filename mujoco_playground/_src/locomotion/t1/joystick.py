@@ -22,10 +22,9 @@ from ml_collections import config_dict
 from mujoco import mjx
 from mujoco.mjx._src import math
 import numpy as np
-import softjax as sj
-
 from mujoco_playground._src import gait
 from mujoco_playground._src import mjx_env
+from mujoco_playground._src import softjax as sj
 from mujoco_playground._src.locomotion.t1 import base as t1_base
 from mujoco_playground._src.locomotion.t1 import t1_constants as consts
 

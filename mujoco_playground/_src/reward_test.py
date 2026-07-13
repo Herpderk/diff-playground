@@ -19,9 +19,9 @@ from absl.testing import parameterized
 import jax
 import jax.numpy as jp
 import numpy as np
-import softjax as sj
 
 from mujoco_playground._src import reward
+from mujoco_playground._src import softjax as sj
 
 
 _SIGMOIDS = (

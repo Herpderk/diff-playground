@@ -22,9 +22,8 @@ from ml_collections import config_dict
 import mujoco
 from mujoco import mjx
 import numpy as np
-import softjax as sj
-
 from mujoco_playground._src import mjx_env
+from mujoco_playground._src import softjax as sj
 from mujoco_playground._src.manipulation.aloha import aloha_constants as consts
 
 

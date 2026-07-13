@@ -22,9 +22,8 @@ from ml_collections import config_dict
 from mujoco import mjx
 from mujoco.mjx._src import math
 from mujoco.mjx._src import types
-import softjax as sj
-
 from mujoco_playground._src import mjx_env
+from mujoco_playground._src import softjax as sj
 from mujoco_playground._src import reward as reward_util
 from mujoco_playground._src.manipulation.franka_emika_panda_robotiq import panda_robotiq
 import numpy as np

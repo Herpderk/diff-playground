@@ -28,7 +28,8 @@ import jax
 import jax.numpy as jp
 import mujoco
 import numpy as np
-import softjax as sj
+
+from mujoco_playground._src import softjax as sj
 
 
 def get_rz(

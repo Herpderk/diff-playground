@@ -21,8 +21,8 @@ import jax.numpy as jp
 from ml_collections import config_dict
 from mujoco import mjx
 from mujoco.mjx._src import math
-import softjax as sj
 from mujoco_playground._src import gait, mjx_env
+from mujoco_playground._src import softjax as sj
 from mujoco_playground._src.locomotion.apollo import base
 from mujoco_playground._src.locomotion.apollo import constants as consts
 
