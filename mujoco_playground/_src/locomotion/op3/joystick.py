@@ -21,6 +21,7 @@ import jax.numpy as jp
 from ml_collections import config_dict
 from mujoco import mjx
 import numpy as np
+import softjax as sj
 
 from mujoco_playground._src import mjx_env
 from mujoco_playground._src.locomotion.op3 import base as op3_base
@@ -205,7 +206,7 @@ class Joystick(op3_base.Op3Env):
     rewards = {
         k: v * self._config.reward_config.scales[k] for k, v in rewards.items()
     }
-    reward = jp.clip(sum(rewards.values()) * self.dt, 0.0, 10000.0)
+    reward = sj.clip(sum(rewards.values()) * self.dt, 0.0, 10000.0)
 
     # Bookkeeping.
     state.info["motor_targets"] = motor_targets
@@ -342,13 +343,13 @@ class Joystick(op3_base.Op3Env):
 
   def _cost_torques(self, torques: jax.Array) -> jax.Array:
     # Penalize torques.
-    return jp.sqrt(jp.sum(jp.square(torques))) + jp.sum(jp.abs(torques))
+    return sj.norm(torques) + jp.sum(sj.abs(torques))
 
   def _cost_energy(
       self, qvel: jax.Array, qfrc_actuator: jax.Array
   ) -> jax.Array:
     # Penalize energy consumption.
-    return jp.sum(jp.abs(qvel) * jp.abs(qfrc_actuator))
+    return jp.sum(sj.abs(qvel) * sj.abs(qfrc_actuator))
 
   def _cost_action_rate(
       self, act: jax.Array, last_act: jax.Array, last_last_act: jax.Array
@@ -366,9 +367,9 @@ class Joystick(op3_base.Op3Env):
       action: jax.Array,
   ) -> jax.Array:
     del global_linvel, ang_vel  # Unused.
-    cmd_norm = jp.linalg.norm(commands)
+    cmd_norm = sj.norm(commands)
     penalty = jp.sum(jp.square(action))
-    return penalty * (cmd_norm < 0.1)
+    return penalty * sj.less(cmd_norm, 0.1)
     # penalty = jp.sum(jp.square(global_linvel[:2]))
     # cmd_norm = jp.linalg.norm(commands[:2])
     # cost_linvel = penalty * (cmd_norm < 0.1)
@@ -385,23 +386,24 @@ class Joystick(op3_base.Op3Env):
     vel_xy = feet_vel[..., :2]
     vel_xy_norm_sq = jp.sum(jp.square(vel_xy), axis=-1)
 
-    left_feet_contact = jp.array([
-        data.sensordata[self._mj_model.sensor_adr[sensor_id]] > 0
+    left_contact_values = jp.array([
+        data.sensordata[self._mj_model.sensor_adr[sensor_id]]
         for sensor_id in self._left_feet_floor_found_sensor
     ])
-    right_feet_contact = jp.array([
-        data.sensordata[self._mj_model.sensor_adr[sensor_id]] > 0
+    right_contact_values = jp.array([
+        data.sensordata[self._mj_model.sensor_adr[sensor_id]]
         for sensor_id in self._right_feet_floor_found_sensor
     ])
-    feet_contact = jp.hstack(
-        [jp.any(left_feet_contact), jp.any(right_feet_contact)]
-    )
+    feet_contact = jp.hstack([
+        sj.any(sj.greater(left_contact_values, 0.0)),
+        sj.any(sj.greater(right_contact_values, 0.0)),
+    ])
     return jp.sum(vel_xy_norm_sq * feet_contact)
 
   def _cost_feet_clearance(self, data: mjx.Data) -> jax.Array:
     feet_vel = data.sensordata[self._foot_linvel_sensor_adr]
     vel_xy = feet_vel[..., :2]
-    vel_norm = jp.sqrt(jp.linalg.norm(vel_xy, axis=-1))
+    vel_norm = jp.sqrt(sj.norm(vel_xy, axis=-1))
     # vel_norm = jp.linalg.norm(vel_xy, axis=-1)
     foot_pos = data.site_xpos[self._feet_site_id]
     foot_z = foot_pos[..., -1]

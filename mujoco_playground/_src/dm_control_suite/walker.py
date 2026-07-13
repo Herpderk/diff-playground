@@ -21,6 +21,7 @@ import jax.numpy as jp
 from ml_collections import config_dict
 import mujoco
 from mujoco import mjx
+import softjax as sj
 
 from mujoco_playground._src import mjx_env
 from mujoco_playground._src import reward

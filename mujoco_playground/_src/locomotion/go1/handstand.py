@@ -22,6 +22,7 @@ from ml_collections import config_dict
 from mujoco import mjx
 from mujoco.mjx._src import math
 import numpy as np
+import softjax as sj
 
 from mujoco_playground._src import mjx_env
 from mujoco_playground._src.locomotion.go1 import base as go1_base
@@ -217,7 +218,7 @@ class Handstand(go1_base.Go1Env):
     rewards = {
         k: v * self._config.reward_config.scales[k] for k, v in rewards.items()
     }
-    reward = jp.clip(sum(rewards.values()) * self.dt, 0.0, 10000.0)
+    reward = sj.clip(sum(rewards.values()) * self.dt, 0.0, 10000.0)
 
     state.info["step"] += 1
     state.info["last_act"] = action
@@ -356,16 +357,16 @@ class Handstand(go1_base.Go1Env):
     return jp.square(normalized)
 
   def _reward_height(self, torso_height: jax.Array) -> jax.Array:
-    height = jp.min(jp.array([torso_height, self._z_des]))
+    height = sj.min(jp.array([torso_height, self._z_des]))
     error = self._z_des - height
     return jp.exp(-error / 1.0)
 
   def _cost_contact(self, data: mjx.Data) -> jax.Array:
     feet_contact = jp.array([
-        data.sensordata[self._mj_model.sensor_adr[sensorid]] > 0
+        data.sensordata[self._mj_model.sensor_adr[sensorid]]
         for sensorid in self._feet_floor_found_sensor
     ])
-    return jp.any(feet_contact)
+    return sj.any(sj.greater(feet_contact, 0.0), axis=-1)
 
   def _cost_pose(self, qpos: jax.Array) -> jax.Array:
     return jp.sum(jp.square(qpos[self._joint_ids] - self._joint_pose))
@@ -376,7 +377,7 @@ class Handstand(go1_base.Go1Env):
   def _cost_energy(
       self, qvel: jax.Array, qfrc_actuator: jax.Array
   ) -> jax.Array:
-    return jp.sum(jp.abs(qvel) * jp.abs(qfrc_actuator))
+    return jp.sum(sj.abs(qvel) * sj.abs(qfrc_actuator))
 
   def _cost_action_rate(
       self, act: jax.Array, info: dict[str, Any]
@@ -384,8 +385,8 @@ class Handstand(go1_base.Go1Env):
     return jp.sum(jp.square(act - info["last_act"]))
 
   def _cost_joint_pos_limits(self, qpos: jax.Array) -> jax.Array:
-    out_of_limits = -jp.clip(qpos - self._soft_lowers, None, 0.0)
-    out_of_limits += jp.clip(qpos - self._soft_uppers, 0.0, None)
+    out_of_limits = sj.relu(self._soft_lowers - qpos)
+    out_of_limits += sj.relu(qpos - self._soft_uppers)
     return jp.sum(out_of_limits)
 
   def _cost_dof_acc(self, qacc: jax.Array) -> jax.Array:

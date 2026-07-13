@@ -22,6 +22,7 @@ from ml_collections import config_dict
 from mujoco import mjx
 from mujoco.mjx._src import math
 import numpy as np
+import softjax as sj
 
 from mujoco_playground._src import gait
 from mujoco_playground._src import mjx_env
@@ -301,27 +302,39 @@ class Joystick(berkeley_humanoid_base.BerkeleyHumanoidEnv):
     )
     state.info["motor_targets"] = motor_targets
 
-    contact = jp.array([
-        data.sensordata[self._mj_model.sensor_adr[sensor_id]] > 0
+    contact_values = jp.array([
+        data.sensordata[self._mj_model.sensor_adr[sensor_id]]
         for sensor_id in self._feet_floor_found_sensor
     ])
-    contact_filt = contact | state.info["last_contact"]
-    first_contact = (state.info["feet_air_time"] > 0.0) * contact_filt
+    contact = contact_values > 0
+    contact_reward = sj.greater(contact_values, 0.0)
+    first_contact_reward = sj.logical_and(
+        sj.greater(state.info["feet_air_time"], 0.0),
+        sj.logical_or(contact_reward, state.info["last_contact"]),
+    )
     state.info["feet_air_time"] += self.dt
     p_f = data.site_xpos[self._feet_site_id]
     p_fz = p_f[..., -1]
-    state.info["swing_peak"] = jp.maximum(state.info["swing_peak"], p_fz)
+    state.info["swing_peak"] = sj.max(
+        jp.stack([state.info["swing_peak"], p_fz]), axis=0
+    )
 
     obs = self._get_obs(data, state.info, contact)
     done = self._get_termination(data)
 
     rewards = self._get_reward(
-        data, action, state.info, state.metrics, done, first_contact, contact
+        data,
+        action,
+        state.info,
+        state.metrics,
+        done,
+        first_contact_reward,
+        contact_reward,
     )
     rewards = {
         k: v * self._config.reward_config.scales[k] for k, v in rewards.items()
     }
-    reward = jp.clip(sum(rewards.values()) * self.dt, 0.0, 10000.0)
+    reward = sj.clip(sum(rewards.values()) * self.dt, 0.0, 10000.0)
 
     state.info["push"] = push
     state.info["step"] += 1
@@ -542,12 +555,12 @@ class Joystick(berkeley_humanoid_base.BerkeleyHumanoidEnv):
   # Energy related rewards.
 
   def _cost_torques(self, torques: jax.Array) -> jax.Array:
-    return jp.sum(jp.abs(torques))
+    return jp.sum(sj.abs(torques))
 
   def _cost_energy(
       self, qvel: jax.Array, qfrc_actuator: jax.Array
   ) -> jax.Array:
-    return jp.sum(jp.abs(qvel) * jp.abs(qfrc_actuator))
+    return jp.sum(sj.abs(qvel) * sj.abs(qfrc_actuator))
 
   def _cost_action_rate(
       self, act: jax.Array, last_act: jax.Array, last_last_act: jax.Array
@@ -559,8 +572,8 @@ class Joystick(berkeley_humanoid_base.BerkeleyHumanoidEnv):
   # Other rewards.
 
   def _cost_joint_pos_limits(self, qpos: jax.Array) -> jax.Array:
-    out_of_limits = -jp.clip(qpos - self._soft_lowers, None, 0.0)
-    out_of_limits += jp.clip(qpos - self._soft_uppers, 0.0, None)
+    out_of_limits = sj.relu(self._soft_lowers - qpos)
+    out_of_limits += sj.relu(qpos - self._soft_uppers)
     return jp.sum(out_of_limits)
 
   def _cost_stand_still(
@@ -568,8 +581,10 @@ class Joystick(berkeley_humanoid_base.BerkeleyHumanoidEnv):
       commands: jax.Array,
       qpos: jax.Array,
   ) -> jax.Array:
-    cmd_norm = jp.linalg.norm(commands)
-    return jp.sum(jp.abs(qpos - self._default_pose)) * (cmd_norm < 0.1)
+    cmd_norm = sj.norm(commands)
+    return jp.sum(sj.abs(qpos - self._default_pose)) * sj.less(
+        cmd_norm, 0.1
+    )
 
   def _cost_termination(self, done: jax.Array) -> jax.Array:
     return done
@@ -583,14 +598,14 @@ class Joystick(berkeley_humanoid_base.BerkeleyHumanoidEnv):
       self, qpos: jax.Array, cmd: jax.Array
   ) -> jax.Array:
     cost = jp.sum(
-        jp.abs(qpos[self._hip_indices] - self._default_pose[self._hip_indices])
+        sj.abs(qpos[self._hip_indices] - self._default_pose[self._hip_indices])
     )
-    cost *= jp.abs(cmd[1]) > 0.1
+    cost *= sj.greater(sj.abs(cmd[1]), 0.1)
     return cost
 
   def _cost_joint_deviation_knee(self, qpos: jax.Array) -> jax.Array:
     return jp.sum(
-        jp.abs(
+        sj.abs(
             qpos[self._knee_indices] - self._default_pose[self._knee_indices]
         )
     )
@@ -605,7 +620,7 @@ class Joystick(berkeley_humanoid_base.BerkeleyHumanoidEnv):
   ) -> jax.Array:
     del info  # Unused.
     body_vel = self.get_global_linvel(data)[:2]
-    reward = jp.sum(jp.linalg.norm(body_vel, axis=-1) * contact)
+    reward = jp.sum(sj.norm(body_vel, axis=-1) * contact)
     return reward
 
   def _cost_feet_clearance(
@@ -614,10 +629,10 @@ class Joystick(berkeley_humanoid_base.BerkeleyHumanoidEnv):
     del info  # Unused.
     feet_vel = data.sensordata[self._foot_linvel_sensor_adr]
     vel_xy = feet_vel[..., :2]
-    vel_norm = jp.sqrt(jp.linalg.norm(vel_xy, axis=-1))
+    vel_norm = jp.sqrt(sj.norm(vel_xy, axis=-1))
     foot_pos = data.site_xpos[self._feet_site_id]
     foot_z = foot_pos[..., -1]
-    delta = jp.abs(foot_z - self._config.reward_config.max_foot_height)
+    delta = sj.abs(foot_z - self._config.reward_config.max_foot_height)
     return jp.sum(delta * vel_norm)
 
   def _cost_feet_height(
@@ -627,7 +642,9 @@ class Joystick(berkeley_humanoid_base.BerkeleyHumanoidEnv):
       info: dict[str, Any],
   ) -> jax.Array:
     del info  # Unused.
-    error = swing_peak / self._config.reward_config.max_foot_height - 1.0
+    error = sj.div(
+        swing_peak, self._config.reward_config.max_foot_height
+    ) - 1.0
     return jp.sum(jp.square(error) * first_contact)
 
   def _reward_feet_air_time(
@@ -638,11 +655,11 @@ class Joystick(berkeley_humanoid_base.BerkeleyHumanoidEnv):
       threshold_min: float = 0.2,
       threshold_max: float = 0.5,
   ) -> jax.Array:
-    cmd_norm = jp.linalg.norm(commands)
+    cmd_norm = sj.norm(commands)
     air_time = (air_time - threshold_min) * first_contact
-    air_time = jp.clip(air_time, max=threshold_max - threshold_min)
+    air_time = air_time - sj.relu(air_time - (threshold_max - threshold_min))
     reward = jp.sum(air_time)
-    reward *= cmd_norm > 0.1  # No reward for zero commands.
+    reward *= sj.greater(cmd_norm, 0.1)  # No reward for zero commands.
     return reward
 
   def _reward_feet_phase(

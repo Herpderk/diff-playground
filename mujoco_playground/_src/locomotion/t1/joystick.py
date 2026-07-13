@@ -22,6 +22,7 @@ from ml_collections import config_dict
 from mujoco import mjx
 from mujoco.mjx._src import math
 import numpy as np
+import softjax as sj
 
 from mujoco_playground._src import gait
 from mujoco_playground._src import mjx_env
@@ -336,32 +337,48 @@ class Joystick(t1_base.T1Env):
         angvel * 1.0 + state.info["filtered_angvel"] * 0.0
     )
 
-    left_feet_contact = jp.array([
-        data.sensordata[self._mj_model.sensor_adr[sensor_id]] > 0
+    left_contact_values = jp.array([
+        data.sensordata[self._mj_model.sensor_adr[sensor_id]]
         for sensor_id in self._left_foot_floor_found_sensor
     ])
-    right_feet_contact = jp.array([
-        data.sensordata[self._mj_model.sensor_adr[sensor_id]] > 0
+    right_contact_values = jp.array([
+        data.sensordata[self._mj_model.sensor_adr[sensor_id]]
         for sensor_id in self._right_foot_floor_found_sensor
     ])
+    left_feet_contact = left_contact_values > 0
+    right_feet_contact = right_contact_values > 0
     contact = jp.hstack([jp.any(left_feet_contact), jp.any(right_feet_contact)])
-    contact_filt = contact | state.info["last_contact"]
-    first_contact = (state.info["feet_air_time"] > 0.0) * contact_filt
+    contact_reward = jp.hstack([
+        sj.any(sj.greater(left_contact_values, 0.0)),
+        sj.any(sj.greater(right_contact_values, 0.0)),
+    ])
+    first_contact_reward = sj.logical_and(
+        sj.greater(state.info["feet_air_time"], 0.0),
+        sj.logical_or(contact_reward, state.info["last_contact"]),
+    )
     state.info["feet_air_time"] += self.dt
     p_f = data.site_xpos[self._feet_site_id]
     p_fz = p_f[..., -1]
-    state.info["swing_peak"] = jp.maximum(state.info["swing_peak"], p_fz)
+    state.info["swing_peak"] = sj.max(
+        jp.stack([state.info["swing_peak"], p_fz]), axis=0
+    )
 
     obs = self._get_obs(data, state.info, contact)
     done = self._get_termination(data)
 
     rewards = self._get_reward(
-        data, action, state.info, state.metrics, done, first_contact, contact
+        data,
+        action,
+        state.info,
+        state.metrics,
+        done,
+        first_contact_reward,
+        contact_reward,
     )
     rewards = {
         k: v * self._config.reward_config.scales[k] for k, v in rewards.items()
     }
-    reward = jp.clip(sum(rewards.values()) * self.dt, 0.0, 10000.0)
+    reward = sj.clip(sum(rewards.values()) * self.dt, 0.0, 10000.0)
 
     state.info["push"] = push
     state.info["step"] += 1
@@ -595,12 +612,12 @@ class Joystick(t1_base.T1Env):
   # Energy related rewards.
 
   def _cost_torques(self, torques: jax.Array) -> jax.Array:
-    return jp.sum(jp.abs(torques))
+    return jp.sum(sj.abs(torques))
 
   def _cost_energy(
       self, qvel: jax.Array, qfrc_actuator: jax.Array
   ) -> jax.Array:
-    return jp.sum(jp.abs(qvel * qfrc_actuator))
+    return jp.sum(sj.abs(qvel * qfrc_actuator))
 
   def _cost_action_rate(
       self, act: jax.Array, last_act: jax.Array, last_last_act: jax.Array
@@ -618,8 +635,8 @@ class Joystick(t1_base.T1Env):
   # Other rewards.
 
   def _cost_joint_pos_limits(self, qpos: jax.Array) -> jax.Array:
-    out_of_limits = -jp.clip(qpos - self._soft_lowers, None, 0.0)
-    out_of_limits += jp.clip(qpos - self._soft_uppers, 0.0, None)
+    out_of_limits = sj.relu(self._soft_lowers - qpos)
+    out_of_limits += sj.relu(qpos - self._soft_uppers)
     return jp.sum(out_of_limits)
 
   def _cost_stand_still(
@@ -627,8 +644,8 @@ class Joystick(t1_base.T1Env):
       commands: jax.Array,
       qpos: jax.Array,
   ) -> jax.Array:
-    cmd_norm = jp.linalg.norm(commands)
-    return jp.sum(jp.abs(qpos - self._default_pose)) * (cmd_norm < 0.1)
+    cmd_norm = sj.norm(commands)
+    return jp.sum(sj.abs(qpos - self._default_pose)) * sj.less(cmd_norm, 0.1)
 
   def _cost_termination(self, done: jax.Array) -> jax.Array:
     return done
@@ -637,12 +654,10 @@ class Joystick(t1_base.T1Env):
     return jp.array(1.0)
 
   def _cost_collision(self, data: mjx.Data) -> jax.Array:
-    return jp.array(
-        data.sensordata[
-            self._mj_model.sensor_adr[self._left_foot_right_foot_found_sensor]
-        ]
-        > 0
-    )
+    collision_value = data.sensordata[
+        self._mj_model.sensor_adr[self._left_foot_right_foot_found_sensor]
+    ]
+    return sj.greater(collision_value, 0.0)
 
   # Pose-related rewards.
 
@@ -650,14 +665,14 @@ class Joystick(t1_base.T1Env):
       self, qpos: jax.Array, cmd: jax.Array
   ) -> jax.Array:
     cost = jp.sum(
-        jp.abs(qpos[self._hip_indices] - self._default_pose[self._hip_indices])
+        sj.abs(qpos[self._hip_indices] - self._default_pose[self._hip_indices])
     )
-    cost *= jp.abs(cmd[1]) > 0.1
+    cost *= sj.greater(sj.abs(cmd[1]), 0.1)
     return cost
 
   def _cost_joint_deviation_knee(self, qpos: jax.Array) -> jax.Array:
     return jp.sum(
-        jp.abs(
+        sj.abs(
             qpos[self._knee_indices] - self._default_pose[self._knee_indices]
         )
     )
@@ -672,7 +687,7 @@ class Joystick(t1_base.T1Env):
   ) -> jax.Array:
     del info  # Unused.
     body_vel = self.get_global_linvel(data)[:2]
-    reward = jp.sum(jp.linalg.norm(body_vel, axis=-1) * contact)
+    reward = jp.sum(sj.norm(body_vel, axis=-1) * contact)
     return reward
 
   def _cost_feet_clearance(
@@ -681,10 +696,10 @@ class Joystick(t1_base.T1Env):
     del info  # Unused.
     feet_vel = data.sensordata[self._foot_linvel_sensor_adr]
     vel_xy = feet_vel[..., :2]
-    vel_norm = jp.sqrt(jp.linalg.norm(vel_xy, axis=-1))
+    vel_norm = jp.sqrt(sj.norm(vel_xy, axis=-1))
     foot_pos = data.site_xpos[self._feet_site_id]
     foot_z = foot_pos[..., -1]
-    delta = jp.abs(foot_z - self._config.reward_config.max_foot_height)
+    delta = sj.abs(foot_z - self._config.reward_config.max_foot_height)
     return jp.sum(delta * vel_norm)
 
   def _cost_feet_height(
@@ -694,7 +709,7 @@ class Joystick(t1_base.T1Env):
       info: dict[str, Any],
   ) -> jax.Array:
     del info  # Unused.
-    error = swing_peak / self._config.reward_config.max_foot_height - 1.0
+    error = sj.div(swing_peak, self._config.reward_config.max_foot_height) - 1.0
     return jp.sum(jp.square(error) * first_contact)
 
   def _reward_feet_air_time(
@@ -705,11 +720,12 @@ class Joystick(t1_base.T1Env):
       threshold_min: float = 0.2,
       threshold_max: float = 0.5,
   ) -> jax.Array:
-    cmd_norm = jp.linalg.norm(commands)
+    cmd_norm = sj.norm(commands)
     air_time = (air_time - threshold_min) * first_contact
-    air_time = jp.clip(air_time, max=threshold_max - threshold_min)
+    upper = threshold_max - threshold_min
+    air_time = air_time - sj.relu(air_time - upper)
     reward = jp.sum(air_time)
-    reward *= cmd_norm > 0.1  # No reward for zero commands.
+    reward *= sj.greater(cmd_norm, 0.1)  # No reward for zero commands.
     return reward
 
   def _reward_feet_phase(
@@ -739,11 +755,11 @@ class Joystick(t1_base.T1Env):
     right_foot_pos = data.site_xpos[self._feet_site_id[1]]
     base_xmat = data.site_xmat[self._site_id]
     base_yaw = jp.arctan2(base_xmat[1, 0], base_xmat[0, 0])
-    feet_distance = jp.abs(
+    feet_distance = sj.abs(
         jp.cos(base_yaw) * (left_foot_pos[1] - right_foot_pos[1])
         - jp.sin(base_yaw) * (left_foot_pos[0] - right_foot_pos[0])
     )
-    return jp.clip(0.2 - feet_distance, min=0.0, max=0.1)
+    return sj.clip(0.2 - feet_distance, 0.0, 0.1)
 
   def sample_command(self, rng: jax.Array) -> jax.Array:
     rng1, rng2, rng3, rng4 = jax.random.split(rng, 4)

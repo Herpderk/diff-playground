@@ -21,6 +21,7 @@ import jax.numpy as jp
 from ml_collections import config_dict
 import mujoco
 from mujoco import mjx
+import softjax as sj
 
 from mujoco_playground._src import mjx_env
 from mujoco_playground._src.dm_control_suite import common
@@ -112,11 +113,9 @@ class BallInCup(mjx_env.MjxEnv):
     del action, metrics, info  # Unused.
     target = data.site_xpos[self._target_site_id, [0, 2]]
     ball = data.xpos[self._ball_body_id, [0, 2]]
-    ball_to_target = jp.abs(target - ball)
-    inside = jp.where(
-        ball_to_target < self._target_size - self._ball_size, 1.0, 0.0
-    )
-    return jp.prod(inside, axis=-1)
+    ball_to_target = sj.abs(target - ball)
+    inside = sj.less(ball_to_target, self._target_size - self._ball_size)
+    return sj.all(inside, axis=-1)
 
   @property
   def xml_path(self) -> str:

@@ -24,6 +24,7 @@ from lxml import etree
 from ml_collections import config_dict
 import mujoco
 from mujoco import mjx
+import softjax as sj
 
 from mujoco_playground._src import mjx_env
 from mujoco_playground._src import reward
@@ -226,7 +227,7 @@ class Swim(mjx_env.MjxEnv):
     return nose_to_target_head[:2]  # Ignore z component.
 
   def _nose_to_target_dist(self, data: mjx.Data) -> jax.Array:
-    return jp.linalg.norm(self._nose_to_target(data))
+    return sj.norm(self._nose_to_target(data))
 
   def _body_velocities(self, data: mjx.Data) -> jax.Array:
     xvel_local = data.sensordata[12:].reshape((-1, 6))

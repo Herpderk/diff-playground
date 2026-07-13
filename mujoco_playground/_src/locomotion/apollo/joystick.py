@@ -21,6 +21,7 @@ import jax.numpy as jp
 from ml_collections import config_dict
 from mujoco import mjx
 from mujoco.mjx._src import math
+import softjax as sj
 from mujoco_playground._src import gait, mjx_env
 from mujoco_playground._src.locomotion.apollo import base
 from mujoco_playground._src.locomotion.apollo import constants as consts
@@ -364,13 +365,13 @@ class Joystick(base.ApolloEnv):
     return jp.sum(jp.square(torso_zaxis[:2]))
 
   def _cost_torques(self, torques: jax.Array) -> jax.Array:
-    return jp.sum(jp.abs(torques))
+    return jp.sum(sj.abs(torques))
 
   def _cost_energy(
       self, qvel: jax.Array, qfrc_actuator: jax.Array
   ) -> jax.Array:
-    torques = qfrc_actuator / self._actuator_torques
-    return jp.sum(jp.abs(qvel[6:] * torques))
+    torques = sj.div(qfrc_actuator, self._actuator_torques)
+    return jp.sum(sj.abs(qvel[6:] * torques))
 
   def _cost_action_rate(self, act: jax.Array, last_act: jax.Array) -> jax.Array:
     return jp.sum(jp.square(act - last_act))
@@ -378,27 +379,25 @@ class Joystick(base.ApolloEnv):
   def _cost_collision(self, data: mjx.Data) -> jax.Array:
     adr = self._mj_model.sensor_adr
     # Hand - thigh.
-    c = data.sensordata[adr[self._left_hand_left_thigh_found_sensor]] > 0
-    c |= data.sensordata[adr[self._right_hand_right_thigh_found_sensor]] > 0
-    # Foot - foot.
-    c |= data.sensordata[adr[self._left_foot_right_foot_found_sensor]] > 0
-    # Shin - shin.
-    c |= data.sensordata[adr[self._left_shin_right_shin_found_sensor]] > 0
-    # Thigh - thigh.
-    c |= data.sensordata[adr[self._left_thigh_right_thigh_found_sensor]] > 0
-
-    return jp.any(c)
+    c = jp.array([
+        data.sensordata[adr[self._left_hand_left_thigh_found_sensor]],
+        data.sensordata[adr[self._right_hand_right_thigh_found_sensor]],
+        data.sensordata[adr[self._left_foot_right_foot_found_sensor]],
+        data.sensordata[adr[self._left_shin_right_shin_found_sensor]],
+        data.sensordata[adr[self._left_thigh_right_thigh_found_sensor]],
+    ])
+    return sj.any(sj.greater(c, 0.0), axis=-1)
 
   def _cost_pose(self, qpos: jax.Array, commands: jax.Array) -> jax.Array:
     # Uniform weights when standing still.
-    weights = jp.where(
-        jp.linalg.norm(commands) < 0.01,
+    weights = sj.where(
+        sj.less(sj.norm(commands), 0.01),
         jp.ones_like(self._weights),
         self._weights,
     )
     # Reduce hip roll weight when lateral command is high.
-    lateral_cmd = jp.abs(commands[1])
-    hip_roll_weight = jp.where(lateral_cmd > 0.3, 0.01, 1.0)
+    lateral_cmd = sj.abs(commands[1])
+    hip_roll_weight = sj.where(sj.greater(lateral_cmd, 0.3), 0.01, 1.0)
     weights = weights.at[21].set(hip_roll_weight)
     weights = weights.at[27].set(hip_roll_weight)
     return jp.sum(jp.square(qpos[7:] - self._init_q[7:]) * weights)

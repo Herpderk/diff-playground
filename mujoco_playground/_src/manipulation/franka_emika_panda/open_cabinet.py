@@ -22,6 +22,7 @@ from ml_collections import config_dict
 from mujoco import mjx
 import mujoco  # pylint: disable=unused-import
 from mujoco.mjx._src import math
+import softjax as sj
 
 from mujoco_playground._src import mjx_env
 from mujoco_playground._src.manipulation.franka_emika_panda import panda
@@ -153,7 +154,7 @@ class PandaOpenCabinet(panda.PandaBase):
         k: v * self._config.reward_config.scales[k]
         for k, v in raw_rewards.items()
     }
-    reward = jp.clip(sum(rewards.values()), -1e4, 1e4)
+    reward = sj.clip(sum(rewards.values()), -1e4, 1e4)
 
     box_pos = data.xpos[self._obj_body]
     out_of_bounds = jp.any(jp.abs(box_pos) > 1.0)
@@ -176,11 +177,11 @@ class PandaOpenCabinet(panda.PandaBase):
     box_pos = data.xpos[self._obj_body]
     gripper_pos = data.site_xpos[self._gripper_site]
 
-    box_target = 1 - jp.tanh(5 * jp.linalg.norm(target_pos - box_pos))
-    gripper_box = 1 - jp.tanh(5 * jp.linalg.norm(box_pos - gripper_pos))
+    box_target = 1 - jp.tanh(5 * sj.norm(target_pos - box_pos))
+    gripper_box = 1 - jp.tanh(5 * sj.norm(box_pos - gripper_pos))
 
     robot_target_qpos = 1 - jp.tanh(
-        jp.linalg.norm(
+        sj.norm(
             data.qpos[self._robot_arm_qposadr]
             - self._init_q[self._robot_arm_qposadr]
         )
@@ -188,21 +189,25 @@ class PandaOpenCabinet(panda.PandaBase):
 
     # Check for collisions with the barrier
     hand_barrier_collision = [
-        data.sensordata[self._mj_model.sensor_adr[sensor_id]] > 0
+        data.sensordata[self._mj_model.sensor_adr[sensor_id]]
         for sensor_id in self._barrier_hand_found_sensor
     ]
-    barrier_collision = sum(hand_barrier_collision) > 0
+    barrier_collision = sj.any(
+        sj.greater(jp.array(hand_barrier_collision), 0.0), axis=-1
+    )
     no_barrier_collision = 1 - barrier_collision
 
-    info["reached_box"] = 1.0 * jp.maximum(
-        info["reached_box"],
-        (jp.linalg.norm(box_pos - gripper_pos) < 1.0 * 0.012),
+    info["reached_box"] = sj.max(
+        jp.stack([
+            info["reached_box"],
+            sj.less(sj.norm(box_pos - gripper_pos), 1.0 * 0.012),
+        ])
     )
 
     return {
         "box_target": box_target * info["reached_box"],
         "gripper_box": gripper_box,
-        "no_barrier_collision": no_barrier_collision.astype(float),
+        "no_barrier_collision": no_barrier_collision,
         "robot_target_qpos": robot_target_qpos,
     }
 

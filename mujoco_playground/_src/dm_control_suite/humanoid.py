@@ -21,6 +21,7 @@ import jax.numpy as jp
 from ml_collections import config_dict
 import mujoco
 from mujoco import mjx
+import softjax as sj
 
 from mujoco_playground._src import mjx_env
 from mujoco_playground._src import reward
@@ -177,7 +178,7 @@ class Humanoid(mjx_env.MjxEnv):
 
   def _move_reward(self, data: mjx.Data) -> jax.Array:
     move = reward.tolerance(
-        jp.linalg.norm(self._center_of_mass_velocity(data)[:2]),
+        sj.norm(self._center_of_mass_velocity(data)[:2]),
         bounds=(self._move_speed, float("inf")),
         margin=self._move_speed,
         value_at_margin=0,

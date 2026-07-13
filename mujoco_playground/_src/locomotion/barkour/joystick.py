@@ -23,6 +23,7 @@ from ml_collections import config_dict
 import mujoco
 from mujoco import mjx
 import numpy as np
+import softjax as sj
 
 from mujoco_playground._src import mjx_env
 
@@ -258,15 +259,19 @@ class Joystick(mjx_env.MjxEnv):
     joint_vel = data.qvel[6:]
     torso_z = data.xpos[self._torso_body_id, -1]
 
-    contact = jp.array([
+    contact_values = jp.array([
         data.sensordata[
             self._mj_model.sensor_adr[self._mj_model.sensor(sensor).id]
         ]
-        > 0
         for sensor in self._feet_floor_found_sensor
     ])
-    contact_filt = contact | state.info["last_contact"]
-    first_contact = (state.info["feet_air_time"] > 0.0) * contact_filt
+    contact = contact_values > 0
+    first_contact_reward = sj.logical_and(
+        sj.greater(state.info["feet_air_time"], 0.0),
+        sj.logical_or(
+            sj.greater(contact_values, 0.0), state.info["last_contact"]
+        ),
+    )
     state.info["feet_air_time"] += self.dt
 
     done = self._get_gravity(data)[-1] < 0
@@ -275,12 +280,12 @@ class Joystick(mjx_env.MjxEnv):
     done |= torso_z < 0.18
 
     rewards = self._get_reward(
-        data, action, state.info, state.metrics, done, first_contact
+        data, action, state.info, state.metrics, done, first_contact_reward
     )
     rewards = {
         k: v * self._config.reward_config.scales[k] for k, v in rewards.items()
     }
-    reward = jp.clip(sum(rewards.values()) * self.dt, 0.0, 10000.0)
+    reward = sj.clip(sum(rewards.values()) * self.dt, 0.0, 10000.0)
 
     # Bookkeeping.
     state.info["last_act"] = action
@@ -416,7 +421,7 @@ class Joystick(mjx_env.MjxEnv):
 
   def _cost_torques(self, torques: jax.Array) -> jax.Array:
     # Penalize torques.
-    return jp.sqrt(jp.sum(jp.square(torques))) + jp.sum(jp.abs(torques))
+    return sj.norm(torques) + jp.sum(sj.abs(torques))
 
   def _cost_action_rate(self, act: jax.Array, last_act: jax.Array) -> jax.Array:
     # Penalize changes in actions.
@@ -428,9 +433,9 @@ class Joystick(mjx_env.MjxEnv):
       joint_angles: jax.Array,
   ) -> jax.Array:
     # Penalize motion at zero commands.
-    unit_cmd = commands[:2] / jp.linalg.norm(commands[:2])
-    return jp.sum(jp.abs(joint_angles - self._default_pose)) * (
-        unit_cmd[1] < 0.1
+    unit_cmd = sj.div(commands[:2], sj.norm(commands[:2]))
+    return jp.sum(sj.abs(joint_angles - self._default_pose)) * sj.less(
+        unit_cmd[1], 0.1
     )
 
   def _cost_termination(self, done: jax.Array, step: jax.Array) -> jax.Array:
@@ -440,9 +445,9 @@ class Joystick(mjx_env.MjxEnv):
       self, air_time: jax.Array, first_contact: jax.Array, commands: jax.Array
   ) -> jax.Array:
     # Reward air time.
-    cmd_norm = jp.linalg.norm(commands[:2])
+    cmd_norm = sj.norm(commands[:2])
     rew_air_time = jp.sum((air_time - 0.1) * first_contact)
-    rew_air_time *= cmd_norm > 0.05  # No reward for zero commands.
+    rew_air_time *= sj.greater(cmd_norm, 0.05)  # No reward for zero commands.
     return rew_air_time
 
   def _maybe_apply_perturbation(

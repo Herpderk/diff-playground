@@ -22,6 +22,7 @@ import jax.numpy as jp
 from ml_collections import config_dict
 import mujoco
 from mujoco import mjx
+import softjax as sj
 
 from mujoco_playground._src import mjx_env
 from mujoco_playground._src.manipulation.franka_emika_panda import panda
@@ -311,42 +312,45 @@ class PandaPickCubeCartesian(pick.PandaPickCube):
 
     # Dense rewards
     raw_rewards = self._get_reward(data, state.info)
+
+    # Penalize collision with box.
+    hand_box_value = data.sensordata[
+        self._mj_model.sensor_adr[self._box_hand_found_sensor]
+    ]
+    raw_rewards['no_box_collision'] = sj.less_equal(hand_box_value, 0.0)
     rewards = {
         k: v * self._config.reward_config.reward_scales[k]
         for k, v in raw_rewards.items()
     }
 
-    # Penalize collision with box.
-    hand_box = (
-        data.sensordata[self._mj_model.sensor_adr[self._box_hand_found_sensor]]
-        > 0
-    )
-    raw_rewards['no_box_collision'] = jp.where(hand_box, 0.0, 1.0)
-
-    total_reward = jp.clip(sum(rewards.values()), -1e4, 1e4)
+    total_reward = sj.clip(sum(rewards.values()), -1e4, 1e4)
 
     if not self._vision:
       # Vision policy cannot access the required state-based observations.
-      da = jp.linalg.norm(action - state.info['prev_action'])
+      da = sj.norm(action - state.info['prev_action'])
       state.info['prev_action'] = action
       total_reward += self._config.reward_config.action_rate * da
       total_reward += no_soln * self._config.reward_config.no_soln_reward
 
     # Sparse rewards
     box_pos = data.xpos[self._obj_body]
-    lifted = (box_pos[2] > 0.05) * self._config.reward_config.lifted_reward
+    lifted = sj.greater(box_pos[2], 0.05) * self._config.reward_config.lifted_reward
     total_reward += lifted
     success = self._get_success(data, state.info)
-    total_reward += success * self._config.reward_config.success_reward
+    success_reward = self._get_success_reward(data, state.info)
+    total_reward += success_reward * self._config.reward_config.success_reward
 
     # Reward progress
-    reward = jp.maximum(
-        total_reward - state.info['prev_reward'], jp.zeros_like(total_reward)
+    reward = sj.max(
+        jp.stack([total_reward - state.info['prev_reward'], jp.zeros_like(total_reward)])
     )
-    state.info['prev_reward'] = jp.maximum(
-        total_reward, state.info['prev_reward']
+    state.info['prev_reward'] = sj.max(
+        jp.stack([
+            total_reward,
+            state.info['prev_reward'],
+        ])
     )
-    reward = jp.where(newly_reset, 0.0, reward)  # Prevent first-step artifact
+    reward = sj.where(newly_reset, 0.0, reward)  # Prevent first-step artifact
 
     out_of_bounds = jp.any(jp.abs(box_pos) > 1.0)
     out_of_bounds |= box_pos[2] < 0.0
@@ -396,7 +400,18 @@ class PandaPickCubeCartesian(pick.PandaPickCube):
         self._vision
     ):  # Randomized camera positions cannot see location along y line.
       box_pos, target_pos = box_pos[2], target_pos[2]
-    return jp.linalg.norm(box_pos - target_pos) < self._config.success_threshold
+    return sj.norm(box_pos - target_pos) < self._config.success_threshold
+
+  def _get_success_reward(
+      self, data: mjx.Data, info: dict[str, Any]
+  ) -> jax.Array:
+    box_pos = data.xpos[self._obj_body]
+    target_pos = info['target_pos']
+    if self._vision:
+      box_pos, target_pos = box_pos[2], target_pos[2]
+    return sj.less(
+        sj.norm(box_pos - target_pos), self._config.success_threshold
+    )
 
   def _move_tip(
       self,

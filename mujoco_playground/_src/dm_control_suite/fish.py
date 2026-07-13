@@ -21,6 +21,7 @@ import jax.numpy as jp
 from ml_collections import config_dict
 import mujoco
 from mujoco import mjx
+import softjax as sj
 import numpy as np
 
 from mujoco_playground._src import mjx_env
@@ -178,7 +179,7 @@ class Swim(mjx_env.MjxEnv):
     )
 
     in_target = reward.tolerance(
-        jp.linalg.norm(mouth_to_target_local),
+        sj.norm(mouth_to_target_local),
         bounds=(0, self._radii),
         margin=2 * self._radii,
     )

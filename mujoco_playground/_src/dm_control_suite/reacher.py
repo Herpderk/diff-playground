@@ -22,6 +22,7 @@ import jax.numpy as jp
 from ml_collections import config_dict
 import mujoco
 from mujoco import mjx
+import softjax as sj
 
 from mujoco_playground._src import mjx_env
 from mujoco_playground._src import reward
@@ -164,7 +165,7 @@ class Reacher(mjx_env.MjxEnv):
     return target_pos - finger_pos
 
   def _finger_to_target_dist(self, data: mjx.Data) -> jax.Array:
-    return jp.linalg.norm(self._finger_to_target(data))
+    return sj.norm(self._finger_to_target(data))
 
   @property
   def xml_path(self) -> str:

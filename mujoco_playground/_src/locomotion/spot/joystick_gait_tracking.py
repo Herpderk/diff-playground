@@ -21,6 +21,7 @@ import jax.numpy as jp
 from ml_collections import config_dict
 from mujoco import mjx
 import numpy as np
+import softjax as sj
 
 from mujoco_playground._src import gait
 from mujoco_playground._src import mjx_env
@@ -371,7 +372,7 @@ class JoystickGaitTracking(spot_base.SpotEnv):
   def _cost_lin_vel_z(self, global_linvel, gait: jax.Array) -> jax.Array:  # pylint: disable=redefined-outer-name
     # Penalize z axis base linear velocity unless pronk or bound.
     cost = jp.square(global_linvel[2])
-    return cost * (gait > 2)
+    return cost * sj.greater(gait, 2)
 
   def _cost_ang_vel_xy(self, global_angvel) -> jax.Array:
     # Penalize xy axes base angular velocity.

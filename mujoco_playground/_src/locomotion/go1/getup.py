@@ -21,6 +21,7 @@ import jax.numpy as jp
 from ml_collections import config_dict
 from mujoco import mjx
 import numpy as np
+import softjax as sj
 
 from mujoco_playground._src import mjx_env
 from mujoco_playground._src.locomotion.go1 import base as go1_base
@@ -209,7 +210,7 @@ class Getup(go1_base.Go1Env):
     rewards = {
         k: v * self._config.reward_config.scales[k] for k, v in rewards.items()
     }
-    reward = jp.clip(sum(rewards.values()) * self.dt, 0.0, 10000.0)
+    reward = sj.clip(sum(rewards.values()) * self.dt, 0.0, 10000.0)
 
     # Bookkeeping.
     state.info["last_last_act"] = state.info["last_act"]
@@ -328,21 +329,21 @@ class Getup(go1_base.Go1Env):
 
   def _is_upright(self, gravity: jax.Array, ori_tol: float = 0.01) -> jax.Array:
     ori_error = jp.sum(jp.square(self._up_vec - gravity))
-    return ori_error < ori_tol
+    return sj.less(ori_error, ori_tol)
 
   def _is_at_desired_height(
       self, torso_height: jax.Array, pos_tol: float = 0.005
   ) -> jax.Array:
-    height = jp.min(jp.array([torso_height, self._z_des]))
+    height = sj.min(jp.array([torso_height, self._z_des]))
     height_error = self._z_des - height
-    return height_error < pos_tol
+    return sj.less(height_error, pos_tol)
 
   def _reward_orientation(self, up_vec: jax.Array) -> jax.Array:
     error = jp.sum(jp.square(self._up_vec - up_vec))
     return jp.exp(-2.0 * error)
 
   def _reward_height(self, torso_height: jax.Array) -> jax.Array:
-    height = jp.min(jp.array([torso_height, self._z_des]))
+    height = sj.min(jp.array([torso_height, self._z_des]))
     return jp.exp(height) - 1.0
 
   def _reward_posture(
@@ -358,7 +359,7 @@ class Getup(go1_base.Go1Env):
     return gate * rew
 
   def _cost_torques(self, torques: jax.Array) -> jax.Array:
-    return jp.sqrt(jp.sum(jp.square(torques))) + jp.sum(jp.abs(torques))
+    return sj.norm(torques) + jp.sum(sj.abs(torques))
 
   def _cost_action_rate(
       self, act: jax.Array, info: dict[str, Any]
@@ -368,13 +369,13 @@ class Getup(go1_base.Go1Env):
     return c1 + c2
 
   def _cost_joint_pos_limits(self, qpos: jax.Array) -> jax.Array:
-    out_of_limits = -jp.clip(qpos - self._soft_lowers, None, 0.0)
-    out_of_limits += jp.clip(qpos - self._soft_uppers, 0.0, None)
+    out_of_limits = sj.relu(self._soft_lowers - qpos)
+    out_of_limits += sj.relu(qpos - self._soft_uppers)
     return jp.sum(out_of_limits)
 
   def _cost_dof_vel(self, qvel: jax.Array) -> jax.Array:
     max_velocity = 2.0 * jp.pi  # rad/s
-    cost = jp.maximum(jp.abs(qvel) - max_velocity, 0.0)
+    cost = sj.relu(sj.abs(qvel) - max_velocity)
     return jp.sum(jp.square(cost))
 
   def _cost_dof_acc(self, qacc: jax.Array) -> jax.Array:

@@ -21,6 +21,7 @@ import jax.numpy as jp
 from ml_collections import config_dict
 import mujoco
 from mujoco import mjx
+import softjax as sj
 
 from mujoco_playground._src import mjx_env
 from mujoco_playground._src import reward
@@ -122,7 +123,7 @@ class PointMass(mjx_env.MjxEnv):
   ) -> jax.Array:
     del info  # Unused.
 
-    mass_to_target_dist = jp.linalg.norm(
+    mass_to_target_dist = sj.norm(
         data.geom_xpos[self._target_geom_id]
         - data.geom_xpos[self._pointmass_geom_id]
     )

@@ -21,6 +21,7 @@ import jax.numpy as jp
 from ml_collections import config_dict
 from mujoco import mjx
 import numpy as np
+import softjax as sj
 
 from mujoco_playground._src import mjx_env
 from mujoco_playground._src.locomotion.spot import base as spot_base
@@ -166,7 +167,7 @@ class Getup(spot_base.SpotEnv):
     rewards = {
         k: v * self._config.reward_config.scales[k] for k, v in rewards.items()
     }
-    reward = jp.clip(sum(rewards.values()) * self.dt, 0.0, 10000.0)
+    reward = sj.clip(sum(rewards.values()) * self.dt, 0.0, 10000.0)
 
     # Bookkeeping.
     state.info["last_last_act"] = state.info["last_act"]
@@ -249,20 +250,24 @@ class Getup(spot_base.SpotEnv):
 
   def _is_upright(self, gravity: jax.Array, ori_tol: float = 0.01) -> jax.Array:
     ori_error = jp.sum(jp.square(self._up_vec - gravity))
-    return ori_error < ori_tol
+    return sj.less(ori_error, ori_tol)
 
   def _is_at_desired_height(
       self, torso_height: jax.Array, pos_tol: float = 0.005
   ) -> jax.Array:
-    height_error = jp.clip((self._z_des - torso_height) / self._z_des, 0.0, 1.0)
-    return height_error < pos_tol
+    height_error = sj.clip(
+        sj.div(self._z_des - torso_height, self._z_des), 0.0, 1.0
+    )
+    return sj.less(height_error, pos_tol)
 
   def _reward_orientation(self, torso_zaxis: jax.Array) -> jax.Array:
     error = jp.sum(jp.square(self._up_vec - torso_zaxis))
     return jp.exp(-2.0 * error)
 
   def _reward_torso_height(self, torso_height: jax.Array) -> jax.Array:
-    error = jp.clip((self._z_des - torso_height) / self._z_des, 0.0, 1.0)
+    error = sj.clip(
+        sj.div(self._z_des - torso_height, self._z_des), 0.0, 1.0
+    )
     return 1.0 - error
 
   def _reward_posture(
@@ -278,7 +283,7 @@ class Getup(spot_base.SpotEnv):
     return gate * rew
 
   def _cost_torques(self, torques: jax.Array) -> jax.Array:
-    return jp.sqrt(jp.sum(jp.square(torques))) + jp.sum(jp.abs(torques))
+    return sj.norm(torques) + jp.sum(sj.abs(torques))
 
   def _cost_action_rate(
       self, act: jax.Array, info: dict[str, Any]

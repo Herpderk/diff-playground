@@ -17,6 +17,7 @@
 import warnings
 
 import jax.numpy as jp
+import softjax as sj
 
 # The value returned by tolerance() at `margin` distance from `bounds` interval.
 _DEFAULT_VALUE_AT_MARGIN = 0.1
@@ -49,27 +50,29 @@ def _sigmoids(x, value_at_1, sigmoid):
 
   elif sigmoid == "reciprocal":
     scale = 1 / value_at_1 - 1
-    return 1 / (abs(x) * scale + 1)
+    return sj.div(1, sj.abs(x) * scale + 1)
 
   elif sigmoid == "cosine":
-    scale = jp.arccos(2 * value_at_1 - 1) / jp.pi
+    scale = sj.div(sj.arccos(2 * value_at_1 - 1), jp.pi)
     scaled_x = x * scale
     with warnings.catch_warnings():
       warnings.filterwarnings(
           action="ignore", message="invalid value encountered in cos"
       )
       cos_pi_scaled_x = jp.cos(jp.pi * scaled_x)
-    return jp.where(abs(scaled_x) < 1, (1 + cos_pi_scaled_x) / 2, 0.0)
+    return sj.where(
+        sj.less(sj.abs(scaled_x), 1), (1 + cos_pi_scaled_x) / 2, 0.0
+    )
 
   elif sigmoid == "linear":
     scale = 1 - value_at_1
     scaled_x = x * scale
-    return jp.where(abs(scaled_x) < 1, 1 - scaled_x, 0.0)
+    return sj.where(sj.less(sj.abs(scaled_x), 1), 1 - scaled_x, 0.0)
 
   elif sigmoid == "quadratic":
     scale = jp.sqrt(1 - value_at_1)
     scaled_x = x * scale
-    return jp.where(abs(scaled_x) < 1, 1 - scaled_x**2, 0.0)
+    return sj.where(sj.less(sj.abs(scaled_x), 1), 1 - scaled_x**2, 0.0)
 
   elif sigmoid == "tanh_squared":
     scale = jp.arctanh(jp.sqrt(1 - value_at_1))
@@ -117,11 +120,15 @@ def tolerance(
   if margin < 0:
     raise ValueError("`margin` must be non-negative.")
 
-  in_bounds = jp.logical_and(lower <= x, x <= upper)
+  in_bounds = sj.logical_and(
+      sj.greater_equal(x, lower), sj.less_equal(x, upper)
+  )
   if margin == 0:
-    value = jp.where(in_bounds, 1.0, 0.0)
+    value = in_bounds
   else:
-    d = jp.where(x < lower, lower - x, x - upper) / margin
-    value = jp.where(in_bounds, 1.0, _sigmoids(d, value_at_margin, sigmoid))
+    d = sj.div(
+        sj.where(sj.less(x, lower), lower - x, x - upper), margin
+    )
+    value = sj.where(in_bounds, 1.0, _sigmoids(d, value_at_margin, sigmoid))
 
   return value

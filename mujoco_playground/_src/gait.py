@@ -28,6 +28,7 @@ import jax
 import jax.numpy as jp
 import mujoco
 import numpy as np
+import softjax as sj
 
 
 def get_rz(
@@ -41,7 +42,7 @@ def get_rz(
   x = (phi + jp.pi) / (2 * jp.pi)
   stance = cubic_bezier_interpolation(0, swing_height, 2 * x)
   swing = cubic_bezier_interpolation(swing_height, 0, 2 * x - 1)
-  return jp.where(x <= 0.5, stance, swing)
+  return sj.where(sj.less_equal(x, 0.5), stance, swing)
 
 
 # Foot order:"FR", "FL", "RR", "RL".

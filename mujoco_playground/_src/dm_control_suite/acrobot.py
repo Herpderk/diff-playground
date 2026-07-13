@@ -21,6 +21,7 @@ import jax.numpy as jp
 from ml_collections import config_dict
 import mujoco
 from mujoco import mjx
+import softjax as sj
 
 from mujoco_playground._src import mjx_env
 from mujoco_playground._src import reward
@@ -139,7 +140,7 @@ class Balance(mjx_env.MjxEnv):
     """Returns the distance from the tip to the target."""
     target_pos = data.site_xpos[self._target_site_id]
     tip_pos = data.site_xpos[self._tip_site_id]
-    return jp.linalg.norm(target_pos - tip_pos)
+    return sj.norm(target_pos - tip_pos)
 
   def _orientations(self, data: mjx.Data) -> jax.Array:
     """Returns the sines and cosines of the pole angles."""

@@ -23,6 +23,7 @@ import jax.numpy as jp
 from ml_collections import config_dict
 from mujoco import mjx
 import numpy as np
+import softjax as sj
 
 from mujoco_playground._src import mjx_env
 from mujoco_playground._src.manipulation.aero_hand import aero_hand_constants as consts
@@ -280,11 +281,11 @@ class CubeRotateZAxis(aero_hand_base.AeroHandEnv):
       self, qvel: jax.Array, qfrc_actuator: jax.Array
   ) -> jax.Array:
     return jp.sum(
-        jp.abs(qvel) * jp.abs(qfrc_actuator)
+        sj.abs(qvel) * sj.abs(qfrc_actuator)
     )  # Change: only use the control joints
 
   def _cost_linvel(self, cube_linvel: jax.Array) -> jax.Array:
-    return jp.linalg.norm(cube_linvel, ord=1, axis=-1)
+    return jp.sum(sj.abs(cube_linvel), axis=-1)
 
   def _reward_angvel(
       self, cube_angvel: jax.Array, cube_pos_error: jax.Array
