@@ -38,6 +38,26 @@ _SIGMOIDS = (
 
 class RewardTest(parameterized.TestCase):
 
+  @parameterized.parameters(
+      ((-0.2, 0.2), 0.0, (-0.2, 0.2)),
+      ((-0.2, 0.2), 0.5, (-0.2, 0.2)),
+      ((0.0, 0.0), 0.0, (0.0,)),
+      ((0.0, 0.0), 0.5, (0.0,)),
+  )
+  def test_tolerance_is_one_at_inclusive_boundaries(
+      self, bounds, margin, boundary_values
+  ):
+    original_softness = sj.SOFTNESS
+    try:
+      for softness in (0.1, 0.05, 0.01, 0.005, 0.001):
+        sj.SOFTNESS = softness
+        values = reward.tolerance(
+            jp.array(boundary_values), bounds=bounds, margin=margin
+        )
+        np.testing.assert_allclose(values, 1.0)
+    finally:
+      sj.SOFTNESS = original_softness
+
   @parameterized.parameters(0.0, 0.5)
   def test_tolerance_is_finite_and_differentiable(self, margin):
     def objective(x):
@@ -51,6 +71,12 @@ class RewardTest(parameterized.TestCase):
     self.assertTrue(np.all(np.isfinite(values)))
     self.assertTrue(np.all(np.isfinite(gradients)))
     self.assertGreater(np.linalg.norm(np.asarray(gradients)), 0.0)
+
+  def test_tolerance_with_infinite_bounds_is_finite(self):
+    values = reward.tolerance(
+        jp.array([-1.0, 0.0, 1.0]), bounds=(2.5, float("inf")), margin=1.25
+    )
+    self.assertTrue(np.all(np.isfinite(values)))
 
   @parameterized.parameters(*_SIGMOIDS)
   def test_sigmoids_are_finite_and_differentiable(self, sigmoid):

@@ -266,9 +266,9 @@ class Joystick(mjx_env.MjxEnv):
     ])
     contact = contact_values > 0
     first_contact_reward = sj.logical_and(
-        sj.greater(state.info["feet_air_time"], 0.0),
+        sj.greater_st(state.info["feet_air_time"], 0.0),
         sj.logical_or(
-            sj.greater(contact_values, 0.0), state.info["last_contact"]
+            sj.greater_st(contact_values, 0.0), state.info["last_contact"]
         ),
     )
     state.info["feet_air_time"] += self.dt

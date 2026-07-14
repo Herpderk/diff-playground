@@ -365,7 +365,7 @@ class Handstand(go1_base.Go1Env):
         data.sensordata[self._mj_model.sensor_adr[sensorid]]
         for sensorid in self._feet_floor_found_sensor
     ])
-    return sj.any(sj.greater(feet_contact, 0.0), axis=-1)
+    return sj.any(sj.greater_st(feet_contact, 0.0), axis=-1)
 
   def _cost_pose(self, qpos: jax.Array) -> jax.Array:
     return jp.sum(jp.square(qpos[self._joint_ids] - self._joint_pose))

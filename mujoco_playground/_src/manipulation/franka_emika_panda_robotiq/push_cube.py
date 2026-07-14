@@ -495,7 +495,7 @@ class PandaRobotiqPushCube(panda_robotiq.PandaRobotiqBase):
     sub_success = sj.logical_and(position_success, orientation_success)
     success = sj.logical_and(
         sub_success,
-        sj.greater_equal(
+        sj.greater_equal_st(
             state.info["success_step_count"],
             self._config.reward_config.success_step_count,
         ),

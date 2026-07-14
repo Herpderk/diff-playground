@@ -122,13 +122,18 @@ def tolerance(
     raise ValueError("`margin` must be non-negative.")
 
   in_bounds = sj.logical_and(
-      sj.greater_equal(x, lower), sj.less_equal(x, upper)
+      sj.greater_equal_st(x, lower), sj.less_equal_st(x, upper)
   )
   if margin == 0:
     value = in_bounds
   else:
+    # ``sj.where`` is an arithmetic blend, so avoid constructing an unused
+    # infinite branch (which would otherwise produce ``0 * inf = NaN``).
+    safe_lower = jp.where(jp.isinf(lower), x, lower)
+    safe_upper = jp.where(jp.isinf(upper), x, upper)
     d = sj.div(
-        sj.where(sj.less(x, lower), lower - x, x - upper), margin
+        sj.where(sj.less_st(x, lower), safe_lower - x, x - safe_upper),
+        margin,
     )
     value = sj.where(in_bounds, 1.0, _sigmoids(d, value_at_margin, sigmoid))
 

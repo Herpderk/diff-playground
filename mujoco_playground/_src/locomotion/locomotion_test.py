@@ -70,6 +70,41 @@ class TestSuite(parameterized.TestCase):
         state.metrics["reward/feet_slip"], expected, rtol=1e-5, atol=1e-6
     )
 
+  @parameterized.parameters(
+      "BarkourJoystick",
+      "BerkeleyHumanoidJoystickFlatTerrain",
+      "SpotFlatTerrainJoystick",
+  )
+  def test_first_contact_reward_is_zero_on_the_initial_swing(
+      self, env_name: str
+  ) -> None:
+    env = locomotion.load(env_name, config_overrides={"impl": "jax"})
+    state = jax.jit(env.reset)(jax.random.PRNGKey(0))
+    state = jax.jit(env.step)(state, jp.zeros(env.action_size))
+
+    # The reset air time is exactly zero, so the first-contact predicate is
+    # false even when the foot sensor reports contact on the first step.
+    np.testing.assert_allclose(
+        state.metrics["reward/feet_air_time"], 0.0, atol=1e-6
+    )
+
+  @parameterized.named_parameters(
+      ("h1", "H1JoystickGaitTracking", 0.0),
+      ("spot", "SpotJoystickGaitTracking", 2.0),
+  )
+  def test_discrete_gait_gate_has_hard_forward_value(
+      self, env_name: str, boundary: float
+  ) -> None:
+    env = locomotion.load(env_name, config_overrides={"impl": "jax"})
+    global_linvel = jp.array([0.0, 0.0, 1.0])
+
+    np.testing.assert_allclose(
+        env._cost_lin_vel_z(global_linvel, boundary), 0.0
+    )
+    np.testing.assert_allclose(
+        env._cost_lin_vel_z(global_linvel, boundary + 1.0), 1.0
+    )
+
 
 if __name__ == "__main__":
   absltest.main()

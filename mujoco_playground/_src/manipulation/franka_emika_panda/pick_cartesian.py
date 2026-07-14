@@ -316,7 +316,7 @@ class PandaPickCubeCartesian(pick.PandaPickCube):
     hand_box_value = data.sensordata[
         self._mj_model.sensor_adr[self._box_hand_found_sensor]
     ]
-    raw_rewards['no_box_collision'] = sj.less_equal(hand_box_value, 0.0)
+    raw_rewards['no_box_collision'] = sj.less_equal_st(hand_box_value, 0.0)
     rewards = {
         k: v * self._config.reward_config.reward_scales[k]
         for k, v in raw_rewards.items()

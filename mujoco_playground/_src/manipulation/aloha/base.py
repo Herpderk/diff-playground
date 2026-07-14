@@ -110,4 +110,6 @@ class AlohaEnv(mjx_env.MjxEnv):
         data.sensordata[self._mj_model.sensor_adr[sensorid]]
         for sensorid in self._table_finger_found_sensor
     ]
-    return sj.any(sj.greater(jp.array(hand_table_collisions), 0.0), axis=-1)
+    return sj.any(
+        sj.greater_st(jp.array(hand_table_collisions), 0.0), axis=-1
+    )

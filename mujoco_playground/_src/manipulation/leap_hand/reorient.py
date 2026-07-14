@@ -385,7 +385,7 @@ class CubeReorient(leap_hand_base.LeapHandEnv):
       metrics: dict[str, Any],
       done: jax.Array,
   ) -> dict[str, jax.Array]:
-    del done, metrics  # Unused.
+    del metrics  # Unused.
 
     cube_pos = self.get_cube_position(data)
     palm_pos = self.get_palm_position(data)

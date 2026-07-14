@@ -192,7 +192,7 @@ class PandaOpenCabinet(panda.PandaBase):
         for sensor_id in self._barrier_hand_found_sensor
     ]
     barrier_collision = sj.any(
-        sj.greater(jp.array(hand_barrier_collision), 0.0), axis=-1
+        sj.greater_st(jp.array(hand_barrier_collision), 0.0), axis=-1
     )
     no_barrier_collision = 1 - barrier_collision
 

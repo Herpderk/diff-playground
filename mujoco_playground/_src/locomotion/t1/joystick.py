@@ -348,11 +348,11 @@ class Joystick(t1_base.T1Env):
     right_feet_contact = right_contact_values > 0
     contact = jp.hstack([jp.any(left_feet_contact), jp.any(right_feet_contact)])
     contact_reward = jp.hstack([
-        sj.any(sj.greater(left_contact_values, 0.0)),
-        sj.any(sj.greater(right_contact_values, 0.0)),
+        sj.any(sj.greater_st(left_contact_values, 0.0)),
+        sj.any(sj.greater_st(right_contact_values, 0.0)),
     ])
     first_contact_reward = sj.logical_and(
-        sj.greater(state.info["feet_air_time"], 0.0),
+        sj.greater_st(state.info["feet_air_time"], 0.0),
         sj.logical_or(contact_reward, state.info["last_contact"]),
     )
     state.info["feet_air_time"] += self.dt
@@ -656,7 +656,7 @@ class Joystick(t1_base.T1Env):
     collision_value = data.sensordata[
         self._mj_model.sensor_adr[self._left_foot_right_foot_found_sensor]
     ]
-    return sj.greater(collision_value, 0.0)
+    return sj.greater_st(collision_value, 0.0)
 
   # Pose-related rewards.
 

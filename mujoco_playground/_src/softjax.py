@@ -15,10 +15,35 @@
 """Project-wide softjax configuration."""
 
 import functools
+import math
 
 import softjax as _softjax
 
 SOFTNESS = 0.01
+
+
+def set_global_softness(softness: float) -> None:
+  """Sets the finite, positive softness used by project softjax wrappers.
+
+  Args:
+    softness: A finite value strictly greater than zero. The value is
+      converted to ``float`` before it is stored.
+
+  Raises:
+    ValueError: If ``softness`` cannot be converted to a finite, positive
+      value.
+  """
+  try:
+    softness = float(softness)
+  except (TypeError, ValueError, OverflowError) as error:
+    raise ValueError(
+        "softness must be a finite value greater than zero"
+    ) from error
+  if not math.isfinite(softness) or softness <= 0.0:
+    raise ValueError("softness must be a finite value greater than zero")
+
+  global SOFTNESS
+  SOFTNESS = softness
 
 
 def _with_softness(fn, softness_position):
@@ -47,8 +72,11 @@ clip = _with_softness(_softjax.clip, 3)
 greater = _with_softness(_softjax.greater, 2)
 greater_st = _with_softness(_softjax.greater_st, 2)
 greater_equal = _with_softness(_softjax.greater_equal, 2)
+greater_equal_st = _with_softness(_softjax.greater_equal_st, 2)
 less = _with_softness(_softjax.less, 2)
+less_st = _with_softness(_softjax.less_st, 2)
 less_equal = _with_softness(_softjax.less_equal, 2)
+less_equal_st = _with_softness(_softjax.less_equal_st, 2)
 max = _with_softness(_softjax.max, 3)
 min = _with_softness(_softjax.min, 3)
 relu = _with_softness(_softjax.relu, 1)
