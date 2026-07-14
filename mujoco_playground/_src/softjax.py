@@ -19,7 +19,7 @@ import functools
 import softjax as _softjax
 
 
-SOFTNESS = 5e-3
+SOFTNESS = 0.02
 
 
 def _with_softness(fn, softness_position):
