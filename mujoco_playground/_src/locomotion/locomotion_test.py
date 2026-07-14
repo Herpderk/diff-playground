@@ -13,10 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for the locomotion environments."""
-from absl.testing import absltest
-from absl.testing import parameterized
 import jax
 import jax.numpy as jp
+import numpy as np
+from absl.testing import absltest, parameterized
 
 from mujoco_playground._src import locomotion
 
@@ -37,6 +37,38 @@ class TestSuite(parameterized.TestCase):
     obs_shape = obs_shape[0] if isinstance(obs_shape, tuple) else obs_shape
     self.assertEqual(obs_shape, env.observation_size)
     self.assertFalse(jp.isnan(state.data.qpos).any())
+
+  def test_go1_contact_reward_has_hard_forward_value(self) -> None:
+    env = locomotion.load(
+        "Go1JoystickFlatTerrain", config_overrides={"impl": "jax"}
+    )
+    state = jax.jit(env.reset)(jax.random.PRNGKey(0))
+    state.info["command"] = jp.array([1.0, 0.0, 0.5])
+    state.info["steps_until_next_cmd"] = jp.array(100000, dtype=jp.int32)
+    action = jp.zeros(env.action_size)
+    step = jax.jit(env.step)
+
+    state = step(state, action)
+    state = step(state, action)
+
+    contact_values = np.asarray(
+        jp.array([
+            state.data.sensordata[env._mj_model.sensor_adr[sensorid]]
+            for sensorid in env._feet_floor_found_sensor
+        ])
+    )
+    self.assertTrue(np.any(contact_values == 0.0))
+
+    contact = contact_values > 0.0
+    feet_vel = np.asarray(state.data.sensordata[env._foot_linvel_sensor_adr])
+    vel_xy_norm_sq = np.sum(np.square(feet_vel[..., :2]), axis=-1)
+    expected = (
+        np.sum(vel_xy_norm_sq * contact)
+        * float(env._config.reward_config.scales.feet_slip)
+    )
+    np.testing.assert_allclose(
+        state.metrics["reward/feet_slip"], expected, rtol=1e-5, atol=1e-6
+    )
 
 
 if __name__ == "__main__":

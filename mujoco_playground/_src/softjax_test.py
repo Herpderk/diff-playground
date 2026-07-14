@@ -14,9 +14,10 @@
 # ==============================================================================
 """Tests for the project softjax adapter."""
 
-from absl.testing import absltest
+import jax
 import jax.numpy as jp
 import numpy as np
+from absl.testing import absltest
 
 from mujoco_playground._src import softjax as sj
 
@@ -24,23 +25,23 @@ from mujoco_playground._src import softjax as sj
 class SoftjaxTest(absltest.TestCase):
 
   def test_softness(self):
-    self.assertEqual(sj.SOFTNESS, 0.02)
+    self.assertEqual(sj.SOFTNESS, 0.01)
 
   def test_clip_at_lower_bound(self):
     np.testing.assert_allclose(
-        sj.clip(jp.array(0.0), 0.0, 10000.0), 0.01386294, rtol=1e-5
+        sj.clip(jp.array(0.0), 0.0, 10000.0), 0.00693147, rtol=1e-5
     )
     np.testing.assert_allclose(
         sj.clip(jp.array(0.0), 0.0, 10000.0, softness=0.1),
-        0.01386294,
+        0.00693147,
         rtol=1e-5,
     )
 
   def test_abs(self):
-    np.testing.assert_allclose(sj.abs(0.01), 0.00244919, rtol=1e-5)
+    np.testing.assert_allclose(sj.abs(0.01), 0.00462117, rtol=1e-5)
 
   def test_comparisons(self):
-    expected = 0.622459
+    expected = 0.731059
     np.testing.assert_allclose(sj.greater(0.01, 0.0), expected, rtol=1e-5)
     np.testing.assert_allclose(
         sj.greater_equal(0.01, 0.0), expected, rtol=1e-5
@@ -50,13 +51,22 @@ class SoftjaxTest(absltest.TestCase):
         sj.less_equal(0.0, 0.01), expected, rtol=1e-5
     )
 
+  def test_st_comparison_has_hard_forward_and_soft_gradient(self):
+    np.testing.assert_allclose(sj.greater_st(0.0, 0.0), 0.0)
+    np.testing.assert_allclose(sj.greater_st(0.01, 0.0), 1.0)
+
+    _, gradient = jax.jvp(
+        lambda x: sj.greater_st(x, 0.0), (jp.array(0.0),), (jp.array(1.0),)
+    )
+    self.assertGreater(float(gradient), 0.0)
+
   def test_reductions(self):
     values = jp.array([0.0, 0.01])
     np.testing.assert_allclose(sj.max(values), 0.01, rtol=1e-5)
     np.testing.assert_allclose(sj.min(values), 0.0, atol=1e-5)
 
   def test_relu(self):
-    np.testing.assert_allclose(sj.relu(0.0), 0.01386294, rtol=1e-5)
+    np.testing.assert_allclose(sj.relu(0.0), 0.00693147, rtol=1e-5)
 
   def test_modes_are_forwarded(self):
     self.assertEqual(sj.clip(0.0, 0.0, 10000.0, mode="hard"), 0.0)

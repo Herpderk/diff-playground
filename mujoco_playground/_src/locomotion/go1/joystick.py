@@ -18,10 +18,11 @@ from typing import Any, Dict, Optional, Union
 
 import jax
 import jax.numpy as jp
+import numpy as np
 from ml_collections import config_dict
 from mujoco import mjx
 from mujoco.mjx._src import math
-import numpy as np
+
 from mujoco_playground._src import mjx_env
 from mujoco_playground._src import softjax as sj
 from mujoco_playground._src.locomotion.go1 import base as go1_base
@@ -260,9 +261,9 @@ class Joystick(go1_base.Go1Env):
         for sensorid in self._feet_floor_found_sensor
     ])
     contact = contact_values > 0
-    contact_reward = sj.greater(contact_values, 0.0)
+    contact_reward = sj.greater_st(contact_values, 0.0)
     first_contact_reward = sj.logical_and(
-        sj.greater(state.info["feet_air_time"], 0.0),
+        sj.greater_st(state.info["feet_air_time"], 0.0),
         sj.logical_or(contact_reward, state.info["last_contact"]),
     )
     state.info["feet_air_time"] += self.dt

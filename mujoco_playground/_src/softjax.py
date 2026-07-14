@@ -18,8 +18,7 @@ import functools
 
 import softjax as _softjax
 
-
-SOFTNESS = 0.02
+SOFTNESS = 0.01
 
 
 def _with_softness(fn, softness_position):
@@ -46,6 +45,7 @@ def _with_softness(fn, softness_position):
 abs = _with_softness(_softjax.abs, 1)
 clip = _with_softness(_softjax.clip, 3)
 greater = _with_softness(_softjax.greater, 2)
+greater_st = _with_softness(_softjax.greater_st, 2)
 greater_equal = _with_softness(_softjax.greater_equal, 2)
 less = _with_softness(_softjax.less, 2)
 less_equal = _with_softness(_softjax.less_equal, 2)
